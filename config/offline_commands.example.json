@@ -1,0 +1,35 @@
+{
+  "HA_OFFLINE_EN": true,
+  "home_assistant": {
+    "url": "http://192.168.1.20:8123",
+    "timeout_seconds": 15,
+    "error_response": "Home Assistant could not execute that command."
+  },
+  "commands": {
+    "turn on the kitchen lights": {
+      "domain": "light",
+      "service": "turn_on",
+      "service_data": {
+        "entity_id": "light.kitchen"
+      },
+      "response": "Kitchen lights turned on."
+    },
+    "άναψε τα φώτα της κουζίνας": {
+      "domain": "light",
+      "service": "turn_on",
+      "service_data": {
+        "entity_id": "light.kitchen"
+      },
+      "response": "Άναψα τα φώτα της κουζίνας."
+    },
+    "run movie mode": {
+      "domain": "script",
+      "service": "turn_on",
+      "service_data": {
+        "entity_id": "script.movie_mode"
+      },
+      "response": "Movie mode started."
+    }
+  }
+}
+

@@ -4,3 +4,4 @@ __pycache__/
 *.py[cod]
 config/offline_commands.json
 
+config/offline_commands.local.json

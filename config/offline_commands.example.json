@@ -5,6 +5,67 @@
     "timeout_seconds": 15,
     "error_response": "Home Assistant could not execute that command."
   },
+  "intent_matching": {
+    "enabled": true,
+    "polite_phrases": [
+      "please",
+      "could you",
+      "σε παρακαλώ",
+      "μπορείς να"
+    ],
+    "articles": [
+      "the",
+      "my",
+      "το",
+      "τον",
+      "τη",
+      "την",
+      "τα"
+    ],
+    "actions": {
+      "turn_on": [
+        "turn on",
+        "switch on",
+        "άναψε",
+        "άνοιξε",
+        "ανάψεις"
+      ],
+      "turn_off": [
+        "turn off",
+        "switch off",
+        "σβήσε",
+        "κλείσε"
+      ]
+    },
+    "entities": {
+      "water_heater": {
+        "aliases": [
+          "water heater",
+          "θερμοσίφωνας",
+          "θερμοσίφωνο",
+          "θερμοσίφωνα"
+        ],
+        "actions": {
+          "turn_on": {
+            "domain": "switch",
+            "service": "turn_on",
+            "service_data": {
+              "entity_id": "switch.100174af11"
+            },
+            "response": "Water heater turned on."
+          },
+          "turn_off": {
+            "domain": "switch",
+            "service": "turn_off",
+            "service_data": {
+              "entity_id": "switch.100174af11"
+            },
+            "response": "Water heater turned off."
+          }
+        }
+      }
+    }
+  },
   "commands": {
     "turn on the kitchen lights": {
       "domain": "light",

@@ -1,0 +1,417 @@
+{
+  "enabled": true,
+  "polite_phrases": [
+    "please",
+    "could you",
+    "would you",
+    "can you",
+    "σε παρακαλώ",
+    "μπορείς να",
+    "θα μπορούσες να"
+  ],
+  "articles": [
+    "the",
+    "my",
+    "a",
+    "an",
+    "το",
+    "τον",
+    "τη",
+    "την",
+    "τα",
+    "τους",
+    "τις",
+    "μου"
+  ],
+  "actions": {
+    "turn_on": [
+      "turn on",
+      "switch on",
+      "power on",
+      "άναψε",
+      "άνοιξε",
+      "ανάψεις"
+    ],
+    "turn_off": [
+      "turn off",
+      "switch off",
+      "power off",
+      "close",
+      "σβήσε",
+      "κλείσε",
+      "σβήσεις"
+    ],
+    "run": [
+      "run",
+      "start",
+      "activate",
+      "set",
+      "τρέξε",
+      "ξεκίνα",
+      "ξεκίνησε",
+      "ρύθμισε"
+    ],
+    "volume_up": [
+      "increase",
+      "raise",
+      "turn up",
+      "ανέβασε",
+      "δυνάμωσε"
+    ],
+    "volume_down": [
+      "decrease",
+      "lower",
+      "turn down",
+      "χαμήλωσε"
+    ],
+    "make": [
+      "cook",
+      "make",
+      "φτιάξε",
+      "μαγείρεψε"
+    ],
+    "defrost": [
+      "defrost",
+      "ξεπάγωσε"
+    ],
+    "stop": [
+      "stop",
+      "σταμάτα"
+    ]
+  },
+  "entities": {
+    "all_lights": {
+      "aliases": [
+        "all lights",
+        "all the lights",
+        "lights",
+        "όλα τα φώτα",
+        "ολα τα φωτα",
+        "φώτα",
+        "φωτα"
+      ],
+      "actions": {
+        "turn_on": {
+          "domain": "light",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "light.alllights"
+          },
+          "response": "Έγινε."
+        },
+        "turn_off": {
+          "domain": "light",
+          "service": "turn_off",
+          "service_data": {
+            "entity_id": "light.alllights"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "kitchen_lights": {
+      "aliases": [
+        "kitchen lights",
+        "lights in the kitchen",
+        "φώτα κουζίνας",
+        "φώτα της κουζίνας",
+        "φώτα στην κουζίνα"
+      ],
+      "actions": {
+        "turn_on": {
+          "domain": "light",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "light.kitchen"
+          },
+          "response": "Έγινε."
+        },
+        "turn_off": {
+          "domain": "light",
+          "service": "turn_off",
+          "service_data": {
+            "entity_id": "light.kitchen"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "bedroom_lights": {
+      "aliases": [
+        "bedroom lights",
+        "lights in the bedroom",
+        "φώτα υπνοδωματίου",
+        "φώτα του υπνοδωματίου",
+        "φώτα στο υπνοδωμάτιο"
+      ],
+      "actions": {
+        "turn_on": {
+          "domain": "light",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "light.bedroom"
+          },
+          "response": "Έγινε."
+        },
+        "turn_off": {
+          "domain": "light",
+          "service": "turn_off",
+          "service_data": {
+            "entity_id": "light.bedroom"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "bathroom_lights": {
+      "aliases": [
+        "bathroom lights",
+        "lights in the bathroom",
+        "φώτα μπάνιου",
+        "φώτα του μπάνιου",
+        "φώτα στο μπάνιο"
+      ],
+      "actions": {
+        "turn_on": {
+          "domain": "light",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "light.smallbathroom"
+          },
+          "response": "Έγινε."
+        },
+        "turn_off": {
+          "domain": "light",
+          "service": "turn_off",
+          "service_data": {
+            "entity_id": "light.smallbathroom"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "small_light": {
+      "aliases": [
+        "small light",
+        "little light",
+        "μικρό φως",
+        "μικρόφως"
+      ],
+      "actions": {
+        "turn_on": {
+          "domain": "light",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "light.downstairs"
+          },
+          "response": "Έγινε."
+        },
+        "turn_off": {
+          "domain": "light",
+          "service": "turn_off",
+          "service_data": {
+            "entity_id": "light.downstairs"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "water_heater": {
+      "aliases": [
+        "water heater",
+        "θερμοσίφωνας",
+        "θερμοσίφωνο",
+        "θερμοσίφωνα"
+      ],
+      "actions": {
+        "turn_on": {
+          "domain": "switch",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "switch.100174af11"
+          },
+          "response": "Έγινε."
+        },
+        "turn_off": {
+          "domain": "switch",
+          "service": "turn_off",
+          "service_data": {
+            "entity_id": "switch.100174af11"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "movie_lights": {
+      "aliases": [
+        "movie lights",
+        "movie mode",
+        "φώτα για ταινία",
+        "λειτουργία ταινίας",
+        "ατμόσφαιρα για ταινία"
+      ],
+      "actions": {
+        "turn_on": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.movie_lights"
+          },
+          "response": "Έγινε."
+        },
+        "run": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.movie_lights"
+          },
+          "response": "Έγινε."
+        },
+        "make": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.movie_lights"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "tv": {
+      "aliases": [
+        "tv",
+        "television",
+        "τηλεόραση"
+      ],
+      "actions": {
+        "turn_on": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.power_tv"
+          },
+          "response": "Έγινε."
+        },
+        "turn_off": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.power_tv"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "tv_volume": {
+      "aliases": [
+        "tv volume",
+        "television volume",
+        "volume",
+        "ένταση τηλεόρασης",
+        "ένταση της τηλεόρασης",
+        "φωνή",
+        "φωνή της τηλεόρασης"
+      ],
+      "actions": {
+        "volume_up": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.volume_up_tv"
+          },
+          "response": "Έγινε."
+        },
+        "volume_down": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.volume_down_tv"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "omelet": {
+      "aliases": [
+        "omelet",
+        "omelette",
+        "ομελέτα",
+        "ομελέτα μου"
+      ],
+      "actions": {
+        "make": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.omelete_fryer"
+          },
+          "response": "Έγινε."
+        },
+        "run": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.omelete_fryer"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "bread": {
+      "aliases": [
+        "bread",
+        "my bread",
+        "ψωμί",
+        "ψωμί μου"
+      ],
+      "actions": {
+        "defrost": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.defrost_bread"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "air_fryer": {
+      "aliases": [
+        "air fryer",
+        "fryer",
+        "φριτέζα αέρος",
+        "φριτέζα"
+      ],
+      "actions": {
+        "stop": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.stop_air_fryer"
+          },
+          "response": "Έγινε."
+        }
+      }
+    },
+    "garage": {
+      "aliases": [
+        "garage",
+        "garage door",
+        "γκαράζ",
+        "πόρτα γκαράζ",
+        "πόρτα του γκαράζ",
+        "γκαραζόπορτα"
+      ],
+      "actions": {
+        "turn_off": {
+          "domain": "script",
+          "service": "turn_on",
+          "service_data": {
+            "entity_id": "script.close_garage_door"
+          },
+          "response": "Έγινε."
+        }
+      }
+    }
+  }
+}

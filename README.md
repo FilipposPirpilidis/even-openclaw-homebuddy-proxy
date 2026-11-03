@@ -7,8 +7,9 @@ It is a small HTTP service with an OpenAI-compatible endpoint. A question from
 the glasses is sent to a Telegram bot using a real Telegram user session. The
 service waits for the bot's final reply and returns that text to the glasses.
 
-An optional Home Assistant route can handle a small set of exact voice
-commands locally. Those commands do not go through Telegram or an AI model,
+An optional Home Assistant route can handle a small set of voice commands
+locally. It supports both exact phrases and an optional strict multilingual
+intent grammar. Those commands do not go through Telegram or an AI model,
 which makes common actions such as turning off a light noticeably faster.
 
 ## How it fits together
@@ -43,7 +44,7 @@ a general Telegram client or accept arbitrary chat destinations.
 - Filtering of temporary messages such as `Working`, `Thinking`, and
   `Web Fetch: running`
 - Waiting briefly for message edits before returning the final response
-- Optional exact-match Home Assistant commands
+- Optional exact-match and strict intent-based Home Assistant commands
 - Greek command normalization, including accents, case, final sigma, and
   speech-recognition punctuation
 - Docker health checks and an unprivileged runtime user
@@ -299,6 +300,38 @@ separate phrases.
 The service rejects two phrases that become identical after normalization.
 This catches accidental duplicates during startup rather than selecting an
 action unpredictably.
+
+### Strict multilingual intent matching
+
+For natural variations such as `άναψε το θερμοσίφωνα` and
+`άναψε τον θερμοσίφωνα, σε παρακαλώ`, enable `intent_matching` in the JSON
+file. Languages are data, not hard-coded behavior: add the action phrases,
+articles, courtesy phrases, and entity aliases that Even's ASR may return.
+
+The matcher requires the complete utterance to fit this grammar:
+
+```text
+[optional courtesy phrase] + action + [optional article] + entity
+```
+
+Courtesy phrases may also occur between the action and entity or at the end.
+Punctuation, case, and accents are normalized. The matcher never searches for
+action and entity words inside a longer sentence. For example:
+
+- `Άναψε το θερμοσίφωνα, σε παρακαλώ` matches.
+- `Could you turn on the water heater, please?` matches.
+- `Πες μου γιατί πρέπει να ανάψω τον θερμοσίφωνα` does not match.
+- `What happens if I turn on the water heater?` does not match.
+
+Messages that do not fit the complete grammar continue to Telegram. This is
+deliberately stricter than fuzzy or AI classification so a discussion about a
+device cannot accidentally control it. See
+`config/offline_commands.example.json` for a bilingual example.
+
+`config/intent_matching.homebuddy.example.json` contains a larger HomeBuddy
+example covering lights, a water heater, TV controls, cooking scripts, and a
+garage command. It can be merged into an existing command file without
+replacing the existing exact `commands` object.
 
 For `light` and `switch` `turn_on`/`turn_off` calls, a transient Home Assistant
 server failure is retried once. Scripts are never retried. If Home Assistant

@@ -198,13 +198,13 @@ the JSON response.
 
 Create a custom AI provider or agent in the Even Realities app using:
 
-- **Server URL:** `http://192.168.1.50:18989`
+- **Server URL:** `http://192.168.1.50:18989/v1/chat/completions`
 - **API key:** the value of `PROXY_BEARER_TOKEN`
 - **Model:** `openclaw`
 
-The exact field names depend on the app release. The server supports both the
-base path and `/v1/chat/completions`, so either URL style can be used by the
-client.
+The exact field names depend on the app release. Enter the complete endpoint,
+including `/v1/chat/completions`; the Even Realities app does not append that
+path automatically.
 
 Start with a simple question. Keep the Telegram chat open for the first test so
 you can see the request and the final OpenClaw response.

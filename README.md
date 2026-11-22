@@ -1,11 +1,13 @@
 # Even OpenClaw HomeBuddy Proxy
 
 This project connects the AI feature in the Even Realities app to an OpenClaw
-assistant that is already available through Telegram.
+assistant. It can call the OpenClaw Gateway directly for lower latency, or use
+Telegram as a compatibility transport.
 
 It is a small HTTP service with an OpenAI-compatible endpoint. A question from
-the glasses is sent to a Telegram bot using a real Telegram user session. The
-service waits for the bot's final reply and returns that text to the glasses.
+the glasses is sent either to the Gateway HTTP API or to a Telegram bot using a
+real Telegram user session. The service waits for the final reply and returns
+that text to the glasses.
 
 An optional Home Assistant route can handle a small set of voice commands
 locally. It supports both exact phrases and an optional strict multilingual
@@ -22,16 +24,16 @@ Even Realities app
     |
     v
 This proxy ---------------> Home Assistant
-    |                       (optional exact commands)
-    v
-Telegram bot
+    |                       (optional local commands)
+    +---------------------> OpenClaw Gateway (direct mode)
     |
-    v
-OpenClaw
+    +---------------------> Telegram bot -> OpenClaw (Telegram mode)
 ```
 
-The proxy is deliberately locked to one Telegram target ID. It does not act as
-a general Telegram client or accept arbitrary chat destinations.
+Direct mode uses a stable, server-controlled OpenClaw session identity. Telegram
+mode is deliberately locked to one Telegram target ID. The proxy never accepts
+an arbitrary Gateway agent, session identity, or Telegram destination from the
+public request.
 
 ## What it handles
 
@@ -39,6 +41,7 @@ a general Telegram client or accept arbitrary chat destinations.
 - A `POST /` compatibility endpoint for clients that only accept a base URL
 - Model discovery through `GET /v1/models`
 - Bearer-token authentication
+- Direct OpenClaw Gateway transport with a stable conversation session
 - A persistent Telegram user session through Telethon
 - Correlation of each request with the Telegram response that follows it
 - Filtering of temporary messages such as `Working`, `Thinking`, and
@@ -50,18 +53,19 @@ a general Telegram client or accept arbitrary chat destinations.
 - Docker health checks and an unprivileged runtime user
 
 The service is intentionally non-streaming. The glasses receive one final
-answer after Telegram has settled.
+answer after OpenClaw completes the turn.
 
 ## Requirements
 
 - A Linux machine with Docker and Docker Compose. A Raspberry Pi 4 or newer is
   a good fit.
-- An OpenClaw installation with its Telegram channel working.
-- A Telegram bot connected to that OpenClaw channel.
-- Telegram API credentials from [my.telegram.org](https://my.telegram.org).
+- An OpenClaw installation reachable from the proxy host.
+- Direct mode: the Gateway Chat Completions endpoint and its bearer token.
+- Telegram mode: a working OpenClaw Telegram channel, its bot, and Telegram API
+  credentials from [my.telegram.org](https://my.telegram.org).
 - The phone running the Even Realities app must be able to reach the proxy.
 
-Home Assistant is optional. It is not needed for the Telegram bridge.
+Home Assistant is optional and independent of the selected OpenClaw transport.
 
 ## 1. Prepare the configuration
 
@@ -75,12 +79,11 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Open `.env` and set at least:
+Open `.env`, choose `direct` or `telegram`, and set the public proxy token and
+bind address:
 
 ```dotenv
-TELEGRAM_API_ID=12345678
-TELEGRAM_API_HASH=your_api_hash
-TELEGRAM_TARGET=YourOpenClawBotUsername
+OPENCLAW_TRANSPORT=direct
 PROXY_BEARER_TOKEN=replace_with_a_long_random_value
 PROXY_BIND_ADDRESS=192.168.1.50
 ```
@@ -94,7 +97,48 @@ openssl rand -hex 32
 `PROXY_BIND_ADDRESS` should normally be the LAN address of the machine running
 the service. Keeping it explicit avoids exposing the port on every interface.
 
-## 2. Authorize the Telegram user session
+### Direct OpenClaw mode
+
+Enable the Gateway's OpenAI-compatible Chat Completions endpoint. For an
+OpenClaw Docker installation, run this from its Compose directory:
+
+```bash
+docker compose exec openclaw-gateway \
+  node dist/index.js config set \
+  gateway.http.endpoints.chatCompletions.enabled \
+  true
+```
+
+Configure the proxy with the existing Gateway bearer token. Keep this secret
+inside `.env`; it must never be sent to the glasses or exposed through the
+public endpoint:
+
+```dotenv
+OPENCLAW_TRANSPORT=direct
+OPENCLAW_BASE_URL=http://host.docker.internal:18789
+OPENCLAW_GATEWAY_TOKEN=your_existing_gateway_token
+OPENCLAW_AGENT=openclaw/default
+OPENCLAW_SESSION_USER=even-homebuddy-glasses
+OPENCLAW_TIMEOUT_SECONDS=240
+```
+
+`OPENCLAW_SESSION_USER` is deliberately configured on the server. Reusing it
+gives the glasses a stable OpenClaw conversation without trusting a caller-
+supplied session identifier. The Compose service maps `host.docker.internal`
+to the Linux Docker host automatically.
+
+### Telegram compatibility mode
+
+For Telegram mode, also configure:
+
+```dotenv
+OPENCLAW_TRANSPORT=telegram
+TELEGRAM_API_ID=12345678
+TELEGRAM_API_HASH=your_api_hash
+TELEGRAM_TARGET=YourOpenClawBotUsername
+```
+
+## 2. Authorize the Telegram user session (Telegram mode only)
 
 Build the image and run the interactive login helper:
 
@@ -121,7 +165,7 @@ The login session is stored in the Docker volume named `telegram-session`.
 Treat that volume as a credential. Anyone who obtains the session file may be
 able to use the Telegram account.
 
-## 3. Check the OpenClaw Telegram channel
+## 3. Check the OpenClaw Telegram channel (Telegram mode only)
 
 The Telegram bot must already be able to receive a message and return an
 OpenClaw answer. Test that in the Telegram app before starting the proxy.
@@ -146,8 +190,8 @@ docker compose ps
 docker compose logs --tail 100 telegram-proxy
 ```
 
-The first start normally takes a few seconds while Telethon connects. Check the
-health endpoint from another device on the same network:
+The first Telegram-mode start normally takes a few seconds while Telethon
+connects. Check the health endpoint from another device on the same network:
 
 ```bash
 curl http://192.168.1.50:18989/healthz
@@ -159,7 +203,9 @@ A healthy response looks like this:
 {
   "ok": true,
   "status": "live",
-  "telegram_target_id": 987654321,
+  "transport": "direct",
+  "openclaw_agent": "openclaw/default",
+  "telegram_target_id": null,
   "home_assistant_offline_commands": false,
   "offline_command_count": 0
 }
@@ -192,8 +238,8 @@ curl --max-time 240 -sS \
 unset PROXY_BEARER_TOKEN
 ```
 
-The Telegram bot should receive the request, and its final reply should be in
-the JSON response.
+The selected OpenClaw transport should process the request, and its final reply
+should be in the JSON response. In direct mode, nothing is posted to Telegram.
 
 ## 6. Add it to the Even Realities app
 
@@ -207,17 +253,18 @@ The exact field names depend on the app release. Enter the complete endpoint,
 including `/v1/chat/completions`; the Even Realities app does not append that
 path automatically.
 
-Start with a simple question. Keep the Telegram chat open for the first test so
-you can see the request and the final OpenClaw response.
+Start with a simple question. In Telegram mode, keep the Telegram chat open for
+the first test so you can see the request and the final OpenClaw response.
 
 ## Optional Home Assistant commands
 
 Home Assistant routing is useful for short, predictable commands that should
-not wait for Telegram. It is an allowlist, not a natural-language parser.
+not wait for an OpenClaw turn. It is an allowlist, not a general natural-
+language parser.
 
 When a user message matches a configured phrase, the proxy calls the specified
 Home Assistant service and returns the configured response. Messages that do
-not match continue to Telegram normally.
+not match continue through the selected OpenClaw transport normally.
 
 ### Enable it
 
@@ -323,9 +370,9 @@ action and entity words inside a longer sentence. For example:
 - `Πες μου γιατί πρέπει να ανάψω τον θερμοσίφωνα` does not match.
 - `What happens if I turn on the water heater?` does not match.
 
-Messages that do not fit the complete grammar continue to Telegram. This is
-deliberately stricter than fuzzy or AI classification so a discussion about a
-device cannot accidentally control it. See
+Messages that do not fit the complete grammar continue through the selected
+OpenClaw transport. This is deliberately stricter than fuzzy or AI
+classification so a discussion about a device cannot accidentally control it. See
 `config/offline_commands.example.json` for a bilingual example.
 
 `config/intent_matching.homebuddy.example.json` contains a larger HomeBuddy
@@ -360,8 +407,8 @@ docker compose build telegram-proxy
 docker compose up -d --force-recreate telegram-proxy
 ```
 
-Back up the Telegram session volume before moving the installation to another
-machine.
+In Telegram mode, back up the Telegram session volume before moving the
+installation to another machine.
 
 ## Troubleshooting
 
@@ -374,9 +421,10 @@ docker compose ps -a
 docker compose logs --tail 200 telegram-proxy
 ```
 
-Common causes are a missing Telegram target ID, an unauthorized session, an
-invalid JSON file, a duplicate normalized Home Assistant command, or unreadable
-configuration permissions.
+Common causes are a missing Gateway token in direct mode, a missing Telegram
+target ID or unauthorized session in Telegram mode, an invalid JSON file, a
+duplicate normalized Home Assistant command, or unreadable configuration
+permissions.
 
 ### The glasses show “AI server error”
 
@@ -386,9 +434,10 @@ Check whether the request reached the proxy and which status it returned:
 docker compose logs --since 5m --timestamps telegram-proxy
 ```
 
-A `401` means the bearer token in the app does not match `.env`. A `503` usually
-means Telegram was not ready. A `504` means the Telegram bot did not produce a
-stable response before the configured timeout.
+A `401` means the bearer token in the app does not match `.env`. A `503` means
+the selected OpenClaw transport is unavailable; inspect the adjacent log entry
+for a Gateway HTTP error or Telegram connection error. A `504` means OpenClaw
+did not produce a final response before the configured timeout.
 
 ### A temporary Telegram status appears as the answer
 
@@ -396,7 +445,7 @@ The proxy filters the common OpenClaw status formats. If a new status format is
 introduced, add it to `is_transient_status` in `app/telegram_bridge.py` and add
 a regression test in `tests/test_telegram_bridge.py`.
 
-### A Home Assistant phrase goes to Telegram
+### A Home Assistant phrase is not handled locally
 
 The phrase did not match the allowlist after normalization. Look for the
 `Offline Home Assistant command matched` log line. If it is absent, add the
@@ -413,9 +462,9 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-The code intentionally keeps the Home Assistant router separate from the
-Telegram bridge. Changes to local command matching should not affect Telegram
-correlation, and vice versa.
+The code intentionally keeps the Home Assistant router separate from both
+OpenClaw transports. Changes to local command matching should not affect direct
+Gateway requests or Telegram correlation.
 
 ## Security notes
 
@@ -423,6 +472,8 @@ correlation, and vice versa.
   reverse proxy.
 - Do not expose port `18989` directly to the public internet.
 - Keep `.env`, the Home Assistant token, and the Telegram session out of Git.
+- Treat `OPENCLAW_GATEWAY_TOKEN` as full operator access. Keep the Gateway on a
+  private Docker/LAN path and never expose that token to the Even app.
 - Use a long random bearer token.
 - The Home Assistant JSON is an explicit action allowlist. Review changes before
   restarting the service.

@@ -9,6 +9,8 @@ services:
       - .env
     environment:
       HA_OFFLINE_CONFIG_PATH: /config/offline_commands.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${PROXY_BIND_ADDRESS:-127.0.0.1}:${PROXY_PORT:-18989}:8080"
     volumes:

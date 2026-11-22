@@ -1,6 +1,7 @@
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,8 +13,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    telegram_api_id: int
-    telegram_api_hash: str = Field(min_length=1)
+    openclaw_transport: Literal["telegram", "direct"] = "telegram"
+    openclaw_base_url: str = "http://host.docker.internal:18789"
+    openclaw_gateway_token: str = ""
+    openclaw_agent: str = "openclaw/default"
+    openclaw_session_user: str = "even-homebuddy-glasses"
+    openclaw_timeout_seconds: float = Field(default=240, gt=0)
+
+    telegram_api_id: int = 0
+    telegram_api_hash: str = ""
     telegram_session_path: str = "/data/telegram-user"
     telegram_target_id: int = 0
 
@@ -40,6 +48,33 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_log_level(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("openclaw_base_url")
+    @classmethod
+    def normalize_openclaw_base_url(cls, value: str) -> str:
+        return value.strip().rstrip("/")
+
+    @model_validator(mode="after")
+    def validate_selected_transport(self) -> "Settings":
+        if self.openclaw_transport == "direct":
+            if not self.openclaw_base_url:
+                raise ValueError("OPENCLAW_BASE_URL is required in direct mode")
+            if len(self.openclaw_gateway_token) < 16:
+                raise ValueError(
+                    "OPENCLAW_GATEWAY_TOKEN must contain at least 16 characters "
+                    "in direct mode"
+                )
+        else:
+            if self.telegram_api_id <= 0 or not self.telegram_api_hash:
+                raise ValueError(
+                    "TELEGRAM_API_ID and TELEGRAM_API_HASH are required in "
+                    "telegram mode"
+                )
+            if self.telegram_target_id <= 0:
+                raise ValueError(
+                    "TELEGRAM_TARGET_ID must be set in telegram mode"
+                )
+        return self
 
 
 @lru_cache

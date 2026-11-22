@@ -9,6 +9,11 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from app.config import get_settings
+from app.openclaw_bridge import (
+    OpenClawBridge,
+    OpenClawBridgeTimeout,
+    OpenClawBridgeUnavailable,
+)
 from app.offline_commands import (
     HomeAssistantActionError,
     OfflineCommandRouter,
@@ -28,7 +33,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-bridge = TelegramBridge(settings)
+bridge: TelegramBridge | OpenClawBridge
+if settings.openclaw_transport == "direct":
+    bridge = OpenClawBridge(settings)
+else:
+    bridge = TelegramBridge(settings)
 offline_router = OfflineCommandRouter.from_environment()
 
 
@@ -70,12 +79,12 @@ def latest_user_text(request: ChatCompletionRequest) -> str:
     return ""
 
 
-def completion(answer: str) -> dict[str, Any]:
+def completion(answer: str, model: str | None = None) -> dict[str, Any]:
     return {
         "id": f"chatcmpl_{uuid.uuid4()}",
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": "telegram/openclaw",
+        "model": model or f"{settings.openclaw_transport}/openclaw",
         "choices": [
             {
                 "index": 0,
@@ -114,7 +123,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title="Even OpenClaw Telegram Proxy",
+    title="Even OpenClaw HomeBuddy Proxy",
     lifespan=lifespan,
 )
 
@@ -124,6 +133,7 @@ async def service_information() -> dict[str, Any]:
     return {
         "service": "even-openclaw-homebuddy-proxy",
         "status": "live" if bridge.ready else "starting",
+        "transport": settings.openclaw_transport,
         "openai_endpoint": "/v1/chat/completions",
     }
 
@@ -131,11 +141,20 @@ async def service_information() -> dict[str, Any]:
 @app.get("/healthz")
 async def health() -> dict[str, Any]:
     if not bridge.ready:
-        raise HTTPException(status_code=503, detail="Telegram is not ready")
+        raise HTTPException(
+            status_code=503,
+            detail=f"{settings.openclaw_transport} transport is not ready",
+        )
     return {
         "ok": True,
         "status": "live",
-        "telegram_target_id": settings.telegram_target_id,
+        "transport": settings.openclaw_transport,
+        "openclaw_agent": settings.openclaw_agent,
+        "telegram_target_id": (
+            settings.telegram_target_id
+            if settings.openclaw_transport == "telegram"
+            else None
+        ),
         "home_assistant_offline_commands": offline_router.enabled,
         "offline_command_count": len(offline_router.commands),
     }
@@ -191,17 +210,17 @@ async def chat_completions(
 
     try:
         answer = await bridge.ask(text)
-    except TelegramBridgeTimeout as error:
-        logger.error("Telegram response timed out: %s", error)
+    except (TelegramBridgeTimeout, OpenClawBridgeTimeout) as error:
+        logger.error("Upstream response timed out: %s", error)
         raise HTTPException(
             status_code=504,
-            detail="Telegram response timed out",
+            detail="OpenClaw response timed out",
         ) from error
-    except TelegramBridgeUnavailable as error:
-        logger.error("Telegram bridge unavailable: %s", error)
+    except (TelegramBridgeUnavailable, OpenClawBridgeUnavailable) as error:
+        logger.error("OpenClaw transport unavailable: %s", error)
         raise HTTPException(
             status_code=503,
-            detail="Telegram bridge is unavailable",
+            detail="OpenClaw transport is unavailable",
         ) from error
 
     return completion(answer)

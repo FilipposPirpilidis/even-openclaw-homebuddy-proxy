@@ -42,7 +42,7 @@ public request.
 - Model discovery through `GET /v1/models`
 - Bearer-token authentication
 - Direct OpenClaw Gateway transport with a stable conversation session
-- Optional, explicitly shared last-known-location context in direct mode
+- Optional enriched last-known-location Markdown in OpenClaw's workspace
 - A persistent Telegram user session through Telethon
 - Correlation of each request with the Telegram response that follows it
 - Filtering of temporary messages such as `Working`, `Thinking`, and
@@ -163,24 +163,45 @@ The endpoint returns:
 This proxy-managed endpoint is available only in direct mode. Telegram mode
 continues to pass `/new` and `/reset` to OpenClaw's native channel commands.
 
-#### Optional last-known-location context
+#### Optional last-known-location file
 
-Direct mode can store a location explicitly shared by the client and add it to
-OpenClaw's system context. It is disabled by default. Enable the capability in
-`.env`:
+Direct mode can turn a location explicitly shared by the client into a small
+Markdown file inside OpenClaw's workspace. It does not add coordinates to every
+chat request. It is disabled by default. Create the host directory first:
+
+```bash
+sudo install -d -o pi -g pi -m 2770 \
+  /home/pi/.openclaw/workspace/location
+```
+
+Then enable it in `.env`:
 
 ```dotenv
 LOCATION_CONTEXT_ENABLED=true
 LOCATION_STATE_PATH=/data/client-location.json
+LOCATION_MARKDOWN_PATH=/openclaw-location/latest.md
 LOCATION_MAX_AGE_SECONDS=86400
+LOCATION_DISPLAY_TIMEZONE=Europe/Athens
+LOCATION_ENRICHMENT_ENABLED=true
+LOCATION_ENRICHMENT_CACHE_SECONDS=900
+LOCATION_NEARBY_RADIUS_METERS=250
+LOCATION_OSM_USER_AGENT="HomeBuddy-OpenClaw/1.0 (+https://github.com/FilipposPirpilidis/even-openclaw-homebuddy-proxy)"
+OPENCLAW_LOCATION_DIR=/home/pi/.openclaw/workspace/location
+OPENCLAW_WORKSPACE_GID=1000
 ```
 
 No location exists until an authenticated client sends one. The state file is
-stored in the existing `/data` volume with permissions `0600`. Coordinates are
-not written to application logs. `LOCATION_MAX_AGE_SECONDS` controls how long
-the saved location may be included in OpenClaw requests; an older position
-remains visible through the status endpoint but is marked stale and is not
-sent to OpenClaw.
+stored in the existing `/data` volume with permissions `0600`. The public
+Markdown is written as `/openclaw-location/latest.md` in the proxy and appears
+on the host as `/home/pi/.openclaw/workspace/location/latest.md`. Coordinates
+are not written to application logs. `LOCATION_MAX_AGE_SECONDS` controls the
+`fresh` status reported by the API.
+
+The proxy generates the Plus Code locally. When enrichment is enabled, it also
+uses Nominatim to reverse-geocode the address and Overpass to find the closest
+named landmark. Enrichment has a short coordinate cache and respects public
+service pacing. If either service is unavailable, the raw location and Plus
+Code are still written successfully.
 
 Update the last known location:
 
@@ -198,35 +219,24 @@ curl -X POST http://192.168.1.50:18989/v1/location \
 ```
 
 `captured_at` is optional and defaults to the time the proxy receives the
-update. When supplied, it must be an ISO 8601 timestamp with a timezone.
+update. When supplied, it must be an ISO 8601 timestamp with a timezone. The
+client sends location only through this endpoint; chat-completion payloads do
+not carry or inject location context.
 
-An app may also attach the same object to a chat request. The proxy stores it
-before sending that turn to OpenClaw:
+The generated file has this form:
 
-```json
-{
-  "model": "openclaw",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Is there a pharmacy near me?"
-    }
-  ],
-  "location": {
-    "latitude": 37.9838,
-    "longitude": 23.7275,
-    "accuracy_meters": 20
-  },
-  "stream": false
-}
+```markdown
+# Last Known Location
+
+- **Captured:** 2026-11-23T16:28:01+00:00 (18:28 EET)
+- **Latitude:** 38.258340
+- **Longitude:** 21.747959
+- **Accuracy:** ~13 m
+- **Address:** Κορίνθου – Πατρών, Πάτρα 264 41
+- **Nearby landmark:** Patra Fitness (γυμναστήριο)
+- **Plus Code:** 8GC37P5X+85
+- **Map data:** © OpenStreetMap contributors
 ```
-
-For later requests, the client may omit `location`; the proxy uses the most
-recent non-stale value. OpenClaw receives a system message identifying the
-coordinates, timestamp, and accuracy as user-shared last-known-location data.
-It is told not to treat the position as guaranteed live. Reverse geocoding,
-nearby-place lookup, current weather, and similar requests still require an
-appropriate OpenClaw tool.
 
 Read the stored status:
 
@@ -242,10 +252,10 @@ curl -X DELETE http://192.168.1.50:18989/v1/location \
   -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}"
 ```
 
-The client can alternatively send `{"enabled": false}` to `POST /v1/location`
-or as the chat request's `location` object. All location endpoints require the
-proxy bearer token and are available only when direct mode and location context
-are enabled.
+The client can alternatively send `{"enabled": false}` to `POST /v1/location`.
+That removes both the private JSON state and `latest.md`. All location endpoints
+require the proxy bearer token and are available only when direct mode and the
+location feature are enabled.
 
 ### Telegram compatibility mode
 

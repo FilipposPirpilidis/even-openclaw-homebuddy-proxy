@@ -67,19 +67,14 @@ class OpenClawBridge:
             await self._client.aclose()
             self._client = None
 
-    async def ask(
-        self,
-        text: str,
-        *,
-        system_context: str | None = None,
-    ) -> str:
+    async def ask(self, text: str) -> str:
         if self._client is None:
             raise OpenClawBridgeUnavailable(
                 "Direct OpenClaw bridge is not ready"
             )
 
         async with self._lock:
-            return await self._ask_locked(text, system_context=system_context)
+            return await self._ask_locked(text)
 
     async def reset_session(self) -> None:
         """Rotate and persist the identity used to derive OpenClaw context."""
@@ -96,35 +91,20 @@ class OpenClawBridge:
             self._session_user = session_user
             logger.info("Direct OpenClaw conversation session rotated")
 
-    async def _ask_locked(
-        self,
-        text: str,
-        *,
-        system_context: str | None,
-    ) -> str:
+    async def _ask_locked(self, text: str) -> str:
         assert self._client is not None
-
-        messages: list[dict[str, str]] = []
-        if system_context:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": system_context,
-                }
-            )
-        messages.append(
-            {
-                "role": "user",
-                "content": text,
-            }
-        )
 
         try:
             response = await self._client.post(
                 "/v1/chat/completions",
                 json={
                     "model": self.settings.openclaw_agent,
-                    "messages": messages,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": text,
+                        }
+                    ],
                     "user": self._session_user,
                     "stream": False,
                 },

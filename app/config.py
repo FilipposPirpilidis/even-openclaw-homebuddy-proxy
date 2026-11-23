@@ -23,7 +23,21 @@ class Settings(BaseSettings):
 
     location_context_enabled: bool = False
     location_state_path: str = "/data/client-location.json"
+    location_markdown_path: str = "/openclaw-location/latest.md"
     location_max_age_seconds: float = Field(default=86400, gt=0)
+    location_display_timezone: str = "Europe/Athens"
+    location_enrichment_enabled: bool = True
+    location_enrichment_timeout_seconds: float = Field(default=20, gt=0)
+    location_enrichment_cache_seconds: float = Field(default=900, ge=0)
+    location_nearby_radius_meters: int = Field(default=250, ge=25, le=2000)
+    location_nominatim_base_url: str = "https://nominatim.openstreetmap.org"
+    location_overpass_url: str = "https://overpass-api.de/api/interpreter"
+    location_osm_user_agent: str = (
+        "HomeBuddy-OpenClaw/1.0 "
+        "(+https://github.com/FilipposPirpilidis/"
+        "even-openclaw-homebuddy-proxy)"
+    )
+    location_osm_language: str = "el,en"
 
     telegram_api_id: int = 0
     telegram_api_hash: str = ""
@@ -59,6 +73,11 @@ class Settings(BaseSettings):
     def normalize_openclaw_base_url(cls, value: str) -> str:
         return value.strip().rstrip("/")
 
+    @field_validator("location_nominatim_base_url")
+    @classmethod
+    def normalize_nominatim_base_url(cls, value: str) -> str:
+        return value.strip().rstrip("/")
+
     @model_validator(mode="after")
     def validate_selected_transport(self) -> "Settings":
         if self.openclaw_transport == "direct":
@@ -83,6 +102,20 @@ class Settings(BaseSettings):
             ):
                 raise ValueError(
                     "LOCATION_STATE_PATH is required when location context is enabled"
+                )
+            if (
+                self.location_context_enabled
+                and not self.location_markdown_path.strip()
+            ):
+                raise ValueError(
+                    "LOCATION_MARKDOWN_PATH is required when location is enabled"
+                )
+            if (
+                self.location_enrichment_enabled
+                and not self.location_osm_user_agent.strip()
+            ):
+                raise ValueError(
+                    "LOCATION_OSM_USER_AGENT is required for OSM enrichment"
                 )
         else:
             if self.telegram_api_id <= 0 or not self.telegram_api_hash:

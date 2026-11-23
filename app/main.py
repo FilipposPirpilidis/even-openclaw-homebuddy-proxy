@@ -10,6 +10,7 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.config import get_settings
+from app.location_enrichment import LocationEnricher
 from app.location_store import LocationStore
 from app.openclaw_bridge import (
     OpenClawBridge,
@@ -44,8 +45,11 @@ else:
 offline_router = OfflineCommandRouter.from_environment()
 location_store = LocationStore(
     settings.location_state_path,
+    settings.location_markdown_path,
     settings.location_max_age_seconds,
+    settings.location_display_timezone,
 )
+location_enricher = LocationEnricher(settings)
 
 
 class LocationUpdate(BaseModel):
@@ -81,7 +85,6 @@ class ChatCompletionRequest(BaseModel):
     model: str = "openclaw"
     messages: list[ChatMessage]
     stream: bool = False
-    location: LocationUpdate | None = None
 
 
 def extract_text(content: Any) -> str:
@@ -166,11 +169,18 @@ async def apply_location_update(update: LocationUpdate) -> dict[str, object]:
     assert update.latitude is not None
     assert update.longitude is not None
     try:
+        enrichment = await location_enricher.enrich(
+            update.latitude,
+            update.longitude,
+        )
         await location_store.update(
             latitude=update.latitude,
             longitude=update.longitude,
             captured_at=update.captured_at or datetime.now(timezone.utc),
             accuracy_meters=update.accuracy_meters,
+            address=enrichment.address,
+            nearby_landmark=enrichment.nearby_landmark,
+            plus_code=enrichment.plus_code,
         )
     except OSError as error:
         logger.error("Could not persist user-shared location: %s", error)
@@ -184,9 +194,11 @@ async def apply_location_update(update: LocationUpdate) -> dict[str, object]:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await bridge.start()
+    await location_enricher.start()
     try:
         yield
     finally:
+        await location_enricher.stop()
         await bridge.stop()
 
 
@@ -269,9 +281,6 @@ async def chat_completions(
     if len(text) > settings.max_request_chars:
         raise HTTPException(status_code=413, detail="User message is too long")
 
-    if request.location is not None:
-        await apply_location_update(request.location)
-
     reset_response = session_reset_response(text)
     if (
         reset_response is not None
@@ -298,18 +307,7 @@ async def chat_completions(
         return completion(offline_answer)
 
     try:
-        if isinstance(bridge, OpenClawBridge):
-            system_context = (
-                await location_store.context_message()
-                if settings.location_context_enabled
-                else None
-            )
-            answer = await bridge.ask(
-                text,
-                system_context=system_context,
-            )
-        else:
-            answer = await bridge.ask(text)
+        answer = await bridge.ask(text)
     except (TelegramBridgeTimeout, OpenClawBridgeTimeout) as error:
         logger.error("Upstream response timed out: %s", error)
         raise HTTPException(

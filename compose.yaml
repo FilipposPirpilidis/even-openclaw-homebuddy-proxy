@@ -9,6 +9,9 @@ services:
       - .env
     environment:
       HA_OFFLINE_CONFIG_PATH: /config/offline_commands.json
+      LOCATION_MARKDOWN_PATH: /openclaw-location/latest.md
+    group_add:
+      - "${OPENCLAW_WORKSPACE_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -16,6 +19,7 @@ services:
     volumes:
       - telegram-session:/data
       - ./config:/config:ro
+      - "${OPENCLAW_LOCATION_DIR:-./location}:/openclaw-location"
     read_only: true
     tmpfs:
       - /tmp:size=32m,mode=1777

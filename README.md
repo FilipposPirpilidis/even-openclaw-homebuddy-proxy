@@ -42,6 +42,7 @@ public request.
 - Model discovery through `GET /v1/models`
 - Bearer-token authentication
 - Direct OpenClaw Gateway transport with a stable conversation session
+- Optional, explicitly shared last-known-location context in direct mode
 - A persistent Telegram user session through Telethon
 - Correlation of each request with the Telegram response that follows it
 - Filtering of temporary messages such as `Working`, `Thinking`, and
@@ -161,6 +162,90 @@ The endpoint returns:
 
 This proxy-managed endpoint is available only in direct mode. Telegram mode
 continues to pass `/new` and `/reset` to OpenClaw's native channel commands.
+
+#### Optional last-known-location context
+
+Direct mode can store a location explicitly shared by the client and add it to
+OpenClaw's system context. It is disabled by default. Enable the capability in
+`.env`:
+
+```dotenv
+LOCATION_CONTEXT_ENABLED=true
+LOCATION_STATE_PATH=/data/client-location.json
+LOCATION_MAX_AGE_SECONDS=86400
+```
+
+No location exists until an authenticated client sends one. The state file is
+stored in the existing `/data` volume with permissions `0600`. Coordinates are
+not written to application logs. `LOCATION_MAX_AGE_SECONDS` controls how long
+the saved location may be included in OpenClaw requests; an older position
+remains visible through the status endpoint but is marked stale and is not
+sent to OpenClaw.
+
+Update the last known location:
+
+```bash
+curl -X POST http://192.168.1.50:18989/v1/location \
+  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "latitude": 37.9838,
+    "longitude": 23.7275,
+    "accuracy_meters": 20,
+    "captured_at": "2026-11-23T15:30:00Z"
+  }'
+```
+
+`captured_at` is optional and defaults to the time the proxy receives the
+update. When supplied, it must be an ISO 8601 timestamp with a timezone.
+
+An app may also attach the same object to a chat request. The proxy stores it
+before sending that turn to OpenClaw:
+
+```json
+{
+  "model": "openclaw",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Is there a pharmacy near me?"
+    }
+  ],
+  "location": {
+    "latitude": 37.9838,
+    "longitude": 23.7275,
+    "accuracy_meters": 20
+  },
+  "stream": false
+}
+```
+
+For later requests, the client may omit `location`; the proxy uses the most
+recent non-stale value. OpenClaw receives a system message identifying the
+coordinates, timestamp, and accuracy as user-shared last-known-location data.
+It is told not to treat the position as guaranteed live. Reverse geocoding,
+nearby-place lookup, current weather, and similar requests still require an
+appropriate OpenClaw tool.
+
+Read the stored status:
+
+```bash
+curl http://192.168.1.50:18989/v1/location \
+  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}"
+```
+
+Stop sharing and delete the stored location immediately:
+
+```bash
+curl -X DELETE http://192.168.1.50:18989/v1/location \
+  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}"
+```
+
+The client can alternatively send `{"enabled": false}` to `POST /v1/location`
+or as the chat request's `location` object. All location endpoints require the
+proxy bearer token and are available only when direct mode and location context
+are enabled.
 
 ### Telegram compatibility mode
 

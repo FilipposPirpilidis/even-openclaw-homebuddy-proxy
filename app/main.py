@@ -3,12 +3,14 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.config import get_settings
+from app.location_store import LocationStore
 from app.openclaw_bridge import (
     OpenClawBridge,
     OpenClawBridgeTimeout,
@@ -40,6 +42,30 @@ if settings.openclaw_transport == "direct":
 else:
     bridge = TelegramBridge(settings)
 offline_router = OfflineCommandRouter.from_environment()
+location_store = LocationStore(
+    settings.location_state_path,
+    settings.location_max_age_seconds,
+)
+
+
+class LocationUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    accuracy_meters: float | None = Field(default=None, ge=0)
+    captured_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def require_enabled_coordinates(self) -> "LocationUpdate":
+        if self.enabled and (self.latitude is None or self.longitude is None):
+            raise ValueError(
+                "latitude and longitude are required when location is enabled"
+            )
+        if self.captured_at is not None and self.captured_at.tzinfo is None:
+            raise ValueError("captured_at must include a timezone")
+        return self
 
 
 class ChatMessage(BaseModel):
@@ -55,6 +81,7 @@ class ChatCompletionRequest(BaseModel):
     model: str = "openclaw"
     messages: list[ChatMessage]
     stream: bool = False
+    location: LocationUpdate | None = None
 
 
 def extract_text(content: Any) -> str:
@@ -114,6 +141,46 @@ def authorize(authorization: str | None) -> None:
         raise HTTPException(status_code=401, detail="Invalid bearer token")
 
 
+def require_location_context() -> None:
+    if not settings.location_context_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="Location context is disabled on this proxy",
+        )
+    if (
+        settings.openclaw_transport != "direct"
+        or not isinstance(bridge, OpenClawBridge)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Location context is available only in direct mode",
+        )
+
+
+async def apply_location_update(update: LocationUpdate) -> dict[str, object]:
+    require_location_context()
+    if not update.enabled:
+        await location_store.clear()
+        return {"enabled": False, "location": None}
+
+    assert update.latitude is not None
+    assert update.longitude is not None
+    try:
+        await location_store.update(
+            latitude=update.latitude,
+            longitude=update.longitude,
+            captured_at=update.captured_at or datetime.now(timezone.utc),
+            accuracy_meters=update.accuracy_meters,
+        )
+    except OSError as error:
+        logger.error("Could not persist user-shared location: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Could not persist location",
+        ) from error
+    return await location_store.status()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await bridge.start()
@@ -158,6 +225,8 @@ async def health() -> dict[str, Any]:
         ),
         "home_assistant_offline_commands": offline_router.enabled,
         "offline_command_count": len(offline_router.commands),
+        "location_context_enabled": settings.location_context_enabled,
+        "last_location_available": location_store.available,
     }
 
 
@@ -200,6 +269,9 @@ async def chat_completions(
     if len(text) > settings.max_request_chars:
         raise HTTPException(status_code=413, detail="User message is too long")
 
+    if request.location is not None:
+        await apply_location_update(request.location)
+
     reset_response = session_reset_response(text)
     if (
         reset_response is not None
@@ -226,7 +298,18 @@ async def chat_completions(
         return completion(offline_answer)
 
     try:
-        answer = await bridge.ask(text)
+        if isinstance(bridge, OpenClawBridge):
+            system_context = (
+                await location_store.context_message()
+                if settings.location_context_enabled
+                else None
+            )
+            answer = await bridge.ask(
+                text,
+                system_context=system_context,
+            )
+        else:
+            answer = await bridge.ask(text)
     except (TelegramBridgeTimeout, OpenClawBridgeTimeout) as error:
         logger.error("Upstream response timed out: %s", error)
         raise HTTPException(
@@ -241,6 +324,34 @@ async def chat_completions(
         ) from error
 
     return completion(answer)
+
+
+@app.get("/v1/location")
+async def location_status(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    authorize(authorization)
+    require_location_context()
+    return await location_store.status()
+
+
+@app.post("/v1/location")
+async def update_location(
+    update: LocationUpdate,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    authorize(authorization)
+    return await apply_location_update(update)
+
+
+@app.delete("/v1/location")
+async def clear_location(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    authorize(authorization)
+    require_location_context()
+    await location_store.clear()
+    return {"enabled": False, "location": None}
 
 
 @app.post("/v1/session/reset")

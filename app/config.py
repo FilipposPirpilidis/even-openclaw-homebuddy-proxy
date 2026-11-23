@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     openclaw_session_state_path: str = "/data/openclaw-session.json"
     openclaw_timeout_seconds: float = Field(default=240, gt=0)
 
+    location_context_enabled: bool = False
+    location_state_path: str = "/data/client-location.json"
+    location_max_age_seconds: float = Field(default=86400, gt=0)
+
     telegram_api_id: int = 0
     telegram_api_hash: str = ""
     telegram_session_path: str = "/data/telegram-user"
@@ -72,6 +76,13 @@ class Settings(BaseSettings):
             if not self.openclaw_session_state_path.strip():
                 raise ValueError(
                     "OPENCLAW_SESSION_STATE_PATH is required in direct mode"
+                )
+            if (
+                self.location_context_enabled
+                and not self.location_state_path.strip()
+            ):
+                raise ValueError(
+                    "LOCATION_STATE_PATH is required when location context is enabled"
                 )
         else:
             if self.telegram_api_id <= 0 or not self.telegram_api_hash:

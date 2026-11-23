@@ -96,6 +96,43 @@ def test_direct_bridge_rejects_upstream_http_error() -> None:
     asyncio.run(scenario())
 
 
+def test_direct_bridge_inserts_location_as_system_context() -> None:
+    observed: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "Nearby result"}}]},
+        )
+
+    async def scenario() -> str:
+        bridge = OpenClawBridge(
+            direct_settings(),
+            transport=httpx.MockTransport(handler),
+        )
+        await bridge.start()
+        try:
+            return await bridge.ask(
+                "What is near me?",
+                system_context="Last known latitude: 37.983800",
+            )
+        finally:
+            await bridge.stop()
+
+    assert asyncio.run(scenario()) == "Nearby result"
+    assert observed["messages"] == [
+        {
+            "role": "system",
+            "content": "Last known latitude: 37.983800",
+        },
+        {
+            "role": "user",
+            "content": "What is near me?",
+        },
+    ]
+
+
 def test_direct_session_reset_is_persisted(tmp_path) -> None:
     state_path = tmp_path / "openclaw-session.json"
     observed_users: list[str] = []

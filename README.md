@@ -119,6 +119,7 @@ OPENCLAW_BASE_URL=http://host.docker.internal:18789
 OPENCLAW_GATEWAY_TOKEN=your_existing_gateway_token
 OPENCLAW_AGENT=openclaw/default
 OPENCLAW_SESSION_USER=even-homebuddy-glasses
+OPENCLAW_SESSION_STATE_PATH=/data/openclaw-session.json
 OPENCLAW_TIMEOUT_SECONDS=240
 ```
 
@@ -126,6 +127,40 @@ OPENCLAW_TIMEOUT_SECONDS=240
 gives the glasses a stable OpenClaw conversation without trusting a caller-
 supplied session identifier. The Compose service maps `host.docker.internal`
 to the Linux Docker host automatically.
+
+#### Starting a fresh direct conversation
+
+Direct mode recognizes these exact chat commands before contacting OpenClaw:
+
+- `/new` or `/reset`
+- `new conversation`, `start a new conversation`, or `reset our conversation`
+- `νέα συζήτηση`, `ξεκίνα μια νέα συζήτηση`, or
+  `δημιούργησε νέα συζήτηση`
+
+Matching is case-, accent-, and trailing-punctuation-insensitive, but remains
+exact. A longer discussion containing those words does not reset the session.
+The proxy rotates the stable OpenClaw `user` identity and stores it at
+`OPENCLAW_SESSION_STATE_PATH`, inside the existing `/data` volume, so the new
+conversation survives container restarts. Old OpenClaw sessions are retained.
+
+Apps may reset the same session explicitly with the proxy bearer token:
+
+```bash
+curl -X POST http://192.168.1.50:18989/v1/session/reset \
+  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}"
+```
+
+The endpoint returns:
+
+```json
+{
+  "reset": true,
+  "message": "New conversation started."
+}
+```
+
+This proxy-managed endpoint is available only in direct mode. Telegram mode
+continues to pass `/new` and `/reset` to OpenClaw's native channel commands.
 
 ### Telegram compatibility mode
 

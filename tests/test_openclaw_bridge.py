@@ -1,5 +1,6 @@
 import asyncio
 import json
+import stat
 
 import httpx
 import pytest
@@ -93,6 +94,55 @@ def test_direct_bridge_rejects_upstream_http_error() -> None:
             await bridge.stop()
 
     asyncio.run(scenario())
+
+
+def test_direct_session_reset_is_persisted(tmp_path) -> None:
+    state_path = tmp_path / "openclaw-session.json"
+    observed_users: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        observed_users.append(payload["user"])
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": "Session response"}}
+                ]
+            },
+        )
+
+    settings = direct_settings(
+        openclaw_session_state_path=str(state_path),
+    )
+
+    async def scenario() -> tuple[str, str]:
+        first = OpenClawBridge(
+            settings,
+            transport=httpx.MockTransport(handler),
+        )
+        await first.start()
+        await first.reset_session()
+        rotated_user = first.session_user
+        await first.ask("First request")
+        await first.stop()
+
+        second = OpenClawBridge(
+            settings,
+            transport=httpx.MockTransport(handler),
+        )
+        await second.start()
+        restored_user = second.session_user
+        await second.ask("Second request")
+        await second.stop()
+        return rotated_user, restored_user
+
+    rotated_user, restored_user = asyncio.run(scenario())
+
+    assert rotated_user.startswith("even-test-user:")
+    assert restored_user == rotated_user
+    assert observed_users == [rotated_user, rotated_user]
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
 
 
 def test_direct_mode_requires_gateway_token() -> None:

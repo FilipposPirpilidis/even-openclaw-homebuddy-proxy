@@ -18,6 +18,7 @@ from app.offline_commands import (
     HomeAssistantActionError,
     OfflineCommandRouter,
 )
+from app.session_commands import session_reset_response
 from app.telegram_bridge import (
     TelegramBridge,
     TelegramBridgeTimeout,
@@ -199,6 +200,22 @@ async def chat_completions(
     if len(text) > settings.max_request_chars:
         raise HTTPException(status_code=413, detail="User message is too long")
 
+    reset_response = session_reset_response(text)
+    if (
+        reset_response is not None
+        and settings.openclaw_transport == "direct"
+        and isinstance(bridge, OpenClawBridge)
+    ):
+        try:
+            await bridge.reset_session()
+        except OpenClawBridgeUnavailable as error:
+            logger.error("OpenClaw session reset failed: %s", error)
+            raise HTTPException(
+                status_code=503,
+                detail="OpenClaw session reset failed",
+            ) from error
+        return completion(reset_response)
+
     try:
         offline_answer = await offline_router.execute_if_matched(text)
     except HomeAssistantActionError as error:
@@ -224,4 +241,31 @@ async def chat_completions(
         ) from error
 
     return completion(answer)
+
+
+@app.post("/v1/session/reset")
+async def reset_session(
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    authorize(authorization)
+    if (
+        settings.openclaw_transport != "direct"
+        or not isinstance(bridge, OpenClawBridge)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Proxy-managed reset is available only in direct mode",
+        )
+    try:
+        await bridge.reset_session()
+    except OpenClawBridgeUnavailable as error:
+        logger.error("OpenClaw session reset failed: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="OpenClaw session reset failed",
+        ) from error
+    return {
+        "reset": True,
+        "message": "New conversation started.",
+    }
 

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     openclaw_gateway_token: str = ""
     openclaw_agent: str = "openclaw/default"
     openclaw_session_user: str = "even-homebuddy-glasses"
+    openclaw_session_state_path: str = "/data/openclaw-session.json"
     openclaw_timeout_seconds: float = Field(default=240, gt=0)
 
     telegram_api_id: int = 0
@@ -63,6 +64,14 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "OPENCLAW_GATEWAY_TOKEN must contain at least 16 characters "
                     "in direct mode"
+                )
+            if not self.openclaw_session_user.strip():
+                raise ValueError(
+                    "OPENCLAW_SESSION_USER is required in direct mode"
+                )
+            if not self.openclaw_session_state_path.strip():
+                raise ValueError(
+                    "OPENCLAW_SESSION_STATE_PATH is required in direct mode"
                 )
         else:
             if self.telegram_api_id <= 0 or not self.telegram_api_hash:

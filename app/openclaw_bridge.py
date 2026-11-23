@@ -1,5 +1,10 @@
 import asyncio
+import json
 import logging
+import os
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -28,12 +33,18 @@ class OpenClawBridge:
         self._transport = transport
         self._client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()
+        self._session_user = settings.openclaw_session_user
 
     @property
     def ready(self) -> bool:
         return self._client is not None
 
+    @property
+    def session_user(self) -> str:
+        return self._session_user
+
     async def start(self) -> None:
+        self._session_user = self._load_session_user()
         self._client = httpx.AsyncClient(
             base_url=self.settings.openclaw_base_url,
             headers={
@@ -65,6 +76,21 @@ class OpenClawBridge:
         async with self._lock:
             return await self._ask_locked(text)
 
+    async def reset_session(self) -> None:
+        """Rotate and persist the identity used to derive OpenClaw context."""
+        async with self._lock:
+            session_user = (
+                f"{self.settings.openclaw_session_user}:{uuid.uuid4()}"
+            )
+            try:
+                self._store_session_user(session_user)
+            except OSError as error:
+                raise OpenClawBridgeUnavailable(
+                    f"Could not persist the new OpenClaw session: {error}"
+                ) from error
+            self._session_user = session_user
+            logger.info("Direct OpenClaw conversation session rotated")
+
     async def _ask_locked(self, text: str) -> str:
         assert self._client is not None
 
@@ -79,7 +105,7 @@ class OpenClawBridge:
                             "content": text,
                         }
                     ],
-                    "user": self.settings.openclaw_session_user,
+                    "user": self._session_user,
                     "stream": False,
                 },
             )
@@ -113,6 +139,50 @@ class OpenClawBridge:
                 "OpenClaw Gateway returned an empty completion"
             )
         return answer
+
+    def _load_session_user(self) -> str:
+        path = Path(self.settings.openclaw_session_state_path)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return self.settings.openclaw_session_user
+        except (OSError, json.JSONDecodeError) as error:
+            logger.warning(
+                "Ignoring unreadable OpenClaw session state path=%s error=%s",
+                path,
+                error,
+            )
+            return self.settings.openclaw_session_user
+
+        if not isinstance(payload, dict):
+            return self.settings.openclaw_session_user
+        if payload.get("base") != self.settings.openclaw_session_user:
+            return self.settings.openclaw_session_user
+        session_user = payload.get("user")
+        if not isinstance(session_user, str) or not session_user.strip():
+            return self.settings.openclaw_session_user
+        if len(session_user) > 256:
+            return self.settings.openclaw_session_user
+        return session_user
+
+    def _store_session_user(self, session_user: str) -> None:
+        path = Path(self.settings.openclaw_session_state_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "base": self.settings.openclaw_session_user,
+                    "user": session_user,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
 
 
 def _completion_text(content: Any) -> str:
